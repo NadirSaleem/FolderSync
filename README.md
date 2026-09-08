@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A modern, maintained replacement for SyncToy's folder-pair sync model, built for
-Windows 11 on .NET 8. This first pass is the core engine plus a CLI — no GUI yet.
+Windows 11 on .NET 8 — a core engine, CLI, and WinUI 3 GUI.
 
 ## Installing FolderSync on Windows
 
