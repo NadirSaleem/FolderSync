@@ -62,6 +62,9 @@ SyncEngine/           <- UI-agnostic core library
   SyncAction.cs               one planned change (copy/delete/conflict)
   DiffEngine.cs                 current state + last snapshot -> plan
   ActionExecutor.cs               applies a plan to disk
+  AppPaths.cs                       shared %LocalAppData%\FolderSync locations
+                                     (pairs.json, state snapshots) so CLI and
+                                     GUI see the same configured pairs
 SyncEngine.Cli/        <- console front-end, also callable from Task Scheduler
   Program.cs
 SyncEngine.Tests/      <- xUnit tests for the core engine (DiffEngine so far)
@@ -69,6 +72,7 @@ SyncEngine.Tests/      <- xUnit tests for the core engine (DiffEngine so far)
   DiffEngineTests.cs      Echo / Contribute / Sync coverage
   ScannerFilesDifferTests.cs  real-disk tests for hash-based conflict checks
 SyncEngine.Gui/        <- WinUI 3 desktop app
+  App.xaml(.cs)           application entry point/startup
   MainWindow.xaml(.cs)    bare Window; hosts MainView as its Content in code-behind
   MainView.xaml(.cs)       the actual UI (pairs list, detail form, preview/run, action list) —
                             lives in a UserControl, not directly on Window, because Window
@@ -79,6 +83,9 @@ SyncEngine.Gui/        <- WinUI 3 desktop app
   ActionRow.cs               display wrapper around a SyncAction
   ObservableObject.cs         small INotifyPropertyChanged base
   RelayCommand.cs               small ICommand for button bindings
+  NullToCollapsedConverter.cs    XAML value converter (null -> Collapsed)
+  SyncModeDescriptionConverter.cs XAML value converter (SyncMode -> description text)
+  Assets/                          app icon (also used by FsyncInstaller)
 ```
 
 ## How the sync decision works
@@ -111,9 +118,11 @@ dotnet run -- preview Documents
 dotnet run -- run Documents
 ```
 
-`pairs.json` and the state snapshots are created automatically next to the CLI
-executable. Point Windows Task Scheduler at `sync.exe run <pairName>` for
-scheduled syncing (this is essentially how SyncToy's own scheduling worked).
+`pairs.json` and the state snapshots are created automatically under
+`%LocalAppData%\FolderSync\` (shared with the GUI — see `AppPaths`/`StateStore`
+in `SyncEngine`), not next to the executable. Point Windows Task Scheduler at
+`sync.exe run <pairName>` for scheduled syncing (this is essentially how
+SyncToy's own scheduling worked).
 
 ## Running the tests
 
@@ -168,10 +177,10 @@ UI thread so the window doesn't freeze during a scan.
   `--resolve left|right|newer` flag or interactive prompt (CLI), and a
   resolve-per-row action in the GUI's plan list.
 - **Long path support** — add the `\\?\` prefix handling for paths beyond 260 chars.
-- **GUI polish** — no run history, no app icon/packaging (MSIX) yet, no way to
-  cancel an in-progress scan, and the conflict rows in the plan list are just
-  displayed, not actionable. Also worth surfacing `ActionExecutor`'s per-file
-  errors somewhere more visible than the status line.
+- **GUI polish** — no run history, no way to cancel an in-progress scan, and
+  the conflict rows in the plan list are just displayed, not actionable. Also
+  worth surfacing `ActionExecutor`'s per-file errors somewhere more visible
+  than the status line.
 - **Real-time mode** — a `FileSystemWatcher`-based mode that debounces changes and
   triggers a mini-sync, as an alternative to scheduled/manual runs.
 - **Symlinks/junctions** — currently untested; decide whether to follow or skip them.
