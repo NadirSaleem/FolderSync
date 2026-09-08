@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FolderSync installer.
+
+  UpgradeCode below is fixed forever — do not regenerate it on future builds,
+  or Windows Installer will treat the next release as an unrelated product
+  instead of an upgrade. Bump the Package Version attribute per release instead.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="FolderSync"
+           Manufacturer="FolderSync"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="a325883b-d61c-43a6-b2dc-cc0d59e32954"
+           Scope="perUser"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of FolderSync is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.exe" SourceFile="$(var.PublishDir)\SyncEngine.Gui.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- Installs under the current user's %LocalAppData% — no admin/UAC prompt required. -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="FolderSync" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="FolderSync" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="f1308d11-fb5d-47b3-b086-1a6c7be0e4b9">
+        <Shortcut Id="DesktopShortcutFile"
+                  Name="FolderSync"
+                  Description="Sync folder pairs"
+                  Target="[INSTALLFOLDER]SyncEngine.Gui.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\FolderSync" Name="DesktopShortcutInstalled" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="b49f5f48-a08c-48bf-9e67-f15859c8f65e">
+        <Shortcut Id="StartMenuShortcutFile"
+                  Name="FolderSync"
+                  Description="Sync folder pairs"
+                  Target="[INSTALLFOLDER]SyncEngine.Gui.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\FolderSync" Name="StartMenuShortcutInstalled" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainFeature" Title="FolderSync" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+  </Package>
+</Wix>

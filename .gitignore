@@ -11,3 +11,9 @@ obj/
 # App runtime data
 pairs.json
 *.snapshot.json
+
+# Installer build output
+FsyncInstaller/publish/
+FsyncInstaller/*.msi
+FsyncInstaller/*.wixpdb
+FsyncInstaller/*.log
