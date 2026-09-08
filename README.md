@@ -5,6 +5,50 @@
 A modern, maintained replacement for SyncToy's folder-pair sync model, built for
 Windows 11 on .NET 8. This first pass is the core engine plus a CLI — no GUI yet.
 
+## Installing FolderSync on Windows
+
+### Prerequisites
+
+- Windows 11
+- .NET 8 SDK
+- The Windows App SDK workload — Visual Studio 2022's ".NET Desktop Development"
+  and "Windows application development" workloads, or the standalone Windows
+  App SDK tooling
+- The `wix` global dotnet tool, to build the installer:
+  ```powershell
+  dotnet tool install --global wix --version 5.0.2
+  wix extension add WixToolset.UI.wixext/5.0.2 --global
+  ```
+
+### Build and run the installer
+
+The MSI itself isn't checked into the repo (it's gitignored build output), so
+build it locally first:
+
+```powershell
+cd FolderSync\FsyncInstaller
+.\build.ps1
+```
+
+This publishes a self-contained `SyncEngine.Gui` build and produces
+`FsyncInstaller\FolderSyncSetup.msi`. Then run
+`FsyncInstaller\FolderSyncSetup.msi` (double-click it, or
+`msiexec /i FolderSyncSetup.msi`) and step through the install wizard — accept
+the license, pick an install directory (defaults to
+`%LocalAppData%\Programs\FolderSync`), and it adds Desktop and Start Menu
+shortcuts. No admin rights or UAC prompt needed.
+
+To reinstall after rebuilding, bump `$Version` in `build.ps1` (or pass
+`-Version X.Y.Z.W`) above whatever's currently installed — Windows Installer
+treats an equal-or-lower version as a downgrade and blocks it. Check what's
+currently installed with:
+
+```powershell
+$installer = New-Object -ComObject WindowsInstaller.Installer
+$installer.RelatedProducts("{A325883B-D61C-43A6-B2DC-CC0D59E32954}") |
+    ForEach-Object { $installer.ProductInfo($_, "VersionString") }
+```
+
 ## Project layout
 
 ```
@@ -35,43 +79,6 @@ SyncEngine.Gui/        <- WinUI 3 desktop app
   ActionRow.cs               display wrapper around a SyncAction
   ObservableObject.cs         small INotifyPropertyChanged base
   RelayCommand.cs               small ICommand for button bindings
-```
-
-## Installing via the installer (GUI, no build required)
-
-The `FsyncInstaller` project packages the GUI into a per-user MSI — no admin
-rights or UAC prompt needed. The MSI itself isn't checked into the repo (it's
-gitignored build output), so build it locally first:
-
-```powershell
-cd FolderSync\FsyncInstaller
-.\build.ps1
-```
-
-This requires the Windows App SDK workload (see "Building & running the GUI"
-below) plus the `wix` global tool:
-
-```powershell
-dotnet tool install --global wix --version 5.0.2
-wix extension add WixToolset.UI.wixext/5.0.2 --global
-```
-
-`build.ps1` publishes a self-contained `SyncEngine.Gui` build and produces
-`FsyncInstaller\FolderSyncSetup.msi`. Run that MSI (double-click it, or
-`msiexec /i FolderSyncSetup.msi`) and step through the install wizard — accept
-the license, pick an install directory (defaults to
-`%LocalAppData%\Programs\FolderSync`), and it adds Desktop and Start Menu
-shortcuts.
-
-To reinstall after rebuilding, bump `$Version` in `build.ps1` (or pass
-`-Version X.Y.Z.W`) above whatever's currently installed — Windows Installer
-treats an equal-or-lower version as a downgrade and blocks it. Check what's
-currently installed with:
-
-```powershell
-$installer = New-Object -ComObject WindowsInstaller.Installer
-$installer.RelatedProducts("{A325883B-D61C-43A6-B2DC-CC0D59E32954}") |
-    ForEach-Object { $installer.ProductInfo($_, "VersionString") }
 ```
 
 ## How the sync decision works
