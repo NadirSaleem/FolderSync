@@ -11,7 +11,7 @@
     new MSI is an upgrade of a previous install or a downgrade to block.
 #>
 param(
-    [string]$Version = "1.0.0.0"
+    [string]$Version = "1.0.1.2"
 )
 
 $ErrorActionPreference = "Stop"
