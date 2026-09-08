@@ -1,0 +1,13 @@
+# Visual Studio / .NET
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# App runtime data
+pairs.json
+*.snapshot.json
