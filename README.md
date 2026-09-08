@@ -37,24 +37,6 @@ SyncEngine.Gui/        <- WinUI 3 desktop app
   RelayCommand.cs               small ICommand for button bindings
 ```
 
-## How the sync decision works
-
-Each run:
-1. **Scan** both folders (`Scanner`) — fast size+timestamp comparison, no hashing by default.
-2. **Load** the last-known state of both sides from `pairs.json`'s companion snapshot (`StateStore`).
-3. **Diff** current vs. last-known state to classify every file as new / modified /
-   deleted / unchanged on each side (`DiffEngine`).
-4. Apply mode rules:
-   - **Echo** — left is master, right mirrors it exactly, including deletes.
-   - **Contribute** — same as Echo but never deletes on the right.
-   - **Sync** — changes propagate whichever direction they happened; a file changed
-     on *both* sides since the last run is checked against a SHA-256 hash of both
-     copies before being flagged as a **Conflict** — a size/timestamp mismatch
-     alone isn't proof the content actually differs, and a match alone isn't proof
-     it doesn't.
-5. **Preview** shows the plan without touching disk. **Run** applies it, then saves
-   a fresh snapshot so next time's diff is accurate.
-
 ## Installing via the installer (GUI, no build required)
 
 The `FsyncInstaller` project packages the GUI into a per-user MSI — no admin
@@ -91,6 +73,24 @@ $installer = New-Object -ComObject WindowsInstaller.Installer
 $installer.RelatedProducts("{A325883B-D61C-43A6-B2DC-CC0D59E32954}") |
     ForEach-Object { $installer.ProductInfo($_, "VersionString") }
 ```
+
+## How the sync decision works
+
+Each run:
+1. **Scan** both folders (`Scanner`) — fast size+timestamp comparison, no hashing by default.
+2. **Load** the last-known state of both sides from `pairs.json`'s companion snapshot (`StateStore`).
+3. **Diff** current vs. last-known state to classify every file as new / modified /
+   deleted / unchanged on each side (`DiffEngine`).
+4. Apply mode rules:
+   - **Echo** — left is master, right mirrors it exactly, including deletes.
+   - **Contribute** — same as Echo but never deletes on the right.
+   - **Sync** — changes propagate whichever direction they happened; a file changed
+     on *both* sides since the last run is checked against a SHA-256 hash of both
+     copies before being flagged as a **Conflict** — a size/timestamp mismatch
+     alone isn't proof the content actually differs, and a match alone isn't proof
+     it doesn't.
+5. **Preview** shows the plan without touching disk. **Run** applies it, then saves
+   a fresh snapshot so next time's diff is accurate.
 
 ## Build & run (requires .NET 8 SDK)
 
