@@ -7,23 +7,33 @@ Windows 11 on .NET 8 — a core engine, CLI, and WinUI 3 GUI.
 
 ## Installing FolderSync on Windows
 
-### Prerequisites
+### Quick install (recommended)
+
+Download the latest `FolderSyncSetup.msi` from the
+[Releases page](https://github.com/NadirSaleem/FolderSync/releases/latest),
+run it (double-click it, or `msiexec /i FolderSyncSetup.msi`), and step
+through the install wizard — accept the license, pick an install directory
+(defaults to `%LocalAppData%\Programs\FolderSync`), and it adds Desktop and
+Start Menu shortcuts. No admin rights or UAC prompt needed.
+
+### Building the installer from source
+
+Only needed if you want to build the MSI yourself instead of using a release.
+
+**Prerequisites:**
 
 - Windows 11
 - .NET 8 SDK
 - The Windows App SDK workload — Visual Studio 2022's ".NET Desktop Development"
   and "Windows application development" workloads, or the standalone Windows
   App SDK tooling
-- The `wix` global dotnet tool, to build the installer:
+- The `wix` global dotnet tool:
   ```powershell
   dotnet tool install --global wix --version 5.0.2
   wix extension add WixToolset.UI.wixext/5.0.2 --global
   ```
 
-### Build and run the installer
-
-The MSI itself isn't checked into the repo (it's gitignored build output), so
-build it locally first:
+**Build:**
 
 ```powershell
 cd FolderSync\FsyncInstaller
@@ -31,12 +41,8 @@ cd FolderSync\FsyncInstaller
 ```
 
 This publishes a self-contained `SyncEngine.Gui` build and produces
-`FsyncInstaller\FolderSyncSetup.msi`. Then run
-`FsyncInstaller\FolderSyncSetup.msi` (double-click it, or
-`msiexec /i FolderSyncSetup.msi`) and step through the install wizard — accept
-the license, pick an install directory (defaults to
-`%LocalAppData%\Programs\FolderSync`), and it adds Desktop and Start Menu
-shortcuts. No admin rights or UAC prompt needed.
+`FsyncInstaller\FolderSyncSetup.msi` (gitignored — not checked into the repo),
+which you then run the same way as the release download above.
 
 To reinstall after rebuilding, bump `$Version` in `build.ps1` (or pass
 `-Version X.Y.Z.W`) above whatever's currently installed — Windows Installer
