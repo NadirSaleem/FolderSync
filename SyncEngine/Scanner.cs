@@ -5,6 +5,10 @@ namespace FolderSync.Engine;
 
 public static class Scanner
 {
+    /// <summary>Suffix of the in-progress copies <see cref="ActionExecutor"/> writes. Always
+    /// skipped by scans so a leftover from a killed process is never synced as a real file.</summary>
+    public const string TempFileSuffix = ".fsync-tmp";
+
     /// <summary>
     /// Scans <paramref name="rootPath"/> and returns the current state of every matching file,
     /// keyed by path relative to the root.
@@ -14,7 +18,12 @@ public static class Scanner
     /// scanned" status. There's no reliable total to report against — this is a live
     /// counter, not a percentage.
     /// </param>
-    public static Dictionary<string, FileState> Scan(string rootPath, FolderPair pair, Action? onFileScanned = null)
+    /// <exception cref="OperationCanceledException">If <paramref name="cancellationToken"/> fires mid-scan.</exception>
+    public static Dictionary<string, FileState> Scan(
+        string rootPath,
+        FolderPair pair,
+        Action? onFileScanned = null,
+        CancellationToken cancellationToken = default)
     {
         var result = new Dictionary<string, FileState>(StringComparer.OrdinalIgnoreCase);
 
@@ -27,6 +36,11 @@ public static class Scanner
 
         foreach (var fullPath in Directory.EnumerateFiles(rootPath, "*", searchOption))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (fullPath.EndsWith(TempFileSuffix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var relativePath = Path.GetRelativePath(rootPath, fullPath).Replace('\\', '/');
 
             if (IsExcluded(relativePath, pair.ExcludePatterns))

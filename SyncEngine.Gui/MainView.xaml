@@ -142,6 +142,8 @@
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
                 <Button Content="Preview" Command="{x:Bind ViewModel.PreviewCommand}" />
                 <Button Content="Run" Command="{x:Bind ViewModel.RunCommand}" Style="{StaticResource AccentButtonStyle}" />
+                <Button Content="Cancel" Command="{x:Bind ViewModel.CancelCommand}"
+                        ToolTipService.ToolTip="Stop the Preview or Run in progress. Files already copied stay copied; a file mid-copy is left as it was." />
                 <TextBlock Text="Preview/Run act on every checked pair in the list on the left."
                            Opacity="0.6" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
             </StackPanel>

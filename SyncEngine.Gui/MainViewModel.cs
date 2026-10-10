@@ -22,6 +22,9 @@ public sealed class MainViewModel : ObservableObject
     // Run can re-apply exactly what Preview last computed for each checked pair.
     private readonly Dictionary<FolderPairViewModel, List<SyncAction>> _lastPlans = new();
 
+    // Non-null while a Preview or Run is in progress; Cancel signals it.
+    private CancellationTokenSource? _operationCts;
+
     private FolderPairViewModel? _selectedPair;
     private string _statusText = "Check one or more pairs, then Preview to see what would change.";
 
@@ -33,8 +36,13 @@ public sealed class MainViewModel : ObservableObject
             pair.PropertyChanged += OnPairPropertyChanged;
         Pairs.CollectionChanged += OnPairsCollectionChanged;
 
-        PreviewCommand = new RelayCommand(PreviewAsync, () => Pairs.Any(p => p.IsSelected));
-        RunCommand = new RelayCommand(RunAsync, () => Pairs.Any(p => p.IsSelected) && _lastPlans.Values.Any(plan => plan.Count > 0));
+        PreviewCommand = new RelayCommand(
+            () => RunCancellableAsync(PreviewAsync),
+            () => _operationCts is null && Pairs.Any(p => p.IsSelected));
+        RunCommand = new RelayCommand(
+            () => RunCancellableAsync(RunAsync),
+            () => _operationCts is null && Pairs.Any(p => p.IsSelected) && _lastPlans.Values.Any(plan => plan.Count > 0));
+        CancelCommand = new RelayCommand(CancelAsync, () => _operationCts is { IsCancellationRequested: false });
         AddPairCommand = new RelayCommand(AddPairAsync);
         RemovePairCommand = new RelayCommand(RemovePairAsync, () => SelectedPair is not null);
         SaveEditsCommand = new RelayCommand(SaveEditsAsync, () => SelectedPair is not null);
@@ -103,6 +111,7 @@ public sealed class MainViewModel : ObservableObject
 
     public RelayCommand PreviewCommand { get; }
     public RelayCommand RunCommand { get; }
+    public RelayCommand CancelCommand { get; }
     public RelayCommand AddPairCommand { get; }
     public RelayCommand RemovePairCommand { get; }
     public RelayCommand SaveEditsCommand { get; }
@@ -144,7 +153,35 @@ public sealed class MainViewModel : ObservableObject
         await Task.CompletedTask;
     }
 
-    private async Task PreviewAsync()
+    /// <summary>Runs a Preview/Run with a fresh cancellation token that Cancel can signal.</summary>
+    private async Task RunCancellableAsync(Func<CancellationToken, Task> operation)
+    {
+        using var cts = new CancellationTokenSource();
+        _operationCts = cts;
+        RaiseCanExecuteChanged();
+        try
+        {
+            await operation(cts.Token);
+        }
+        finally
+        {
+            _operationCts = null;
+            RaiseCanExecuteChanged();
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_operationCts is null)
+            return;
+
+        _operationCts.Cancel();
+        StatusText = "Cancelling — finishing up the current file…";
+        RaiseCanExecuteChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task PreviewAsync(CancellationToken cancellationToken)
     {
         var checkedPairs = Pairs.Where(p => p.IsSelected).ToList();
         if (checkedPairs.Count == 0)
@@ -165,7 +202,7 @@ public sealed class MainViewModel : ObservableObject
 
             try
             {
-                var (plan, conflictCount) = await Task.Run(() => BuildPlan(pair, pairVm.SavedName));
+                var (plan, conflictCount) = await Task.Run(() => BuildPlan(pair, pairVm.SavedName, cancellationToken));
                 _lastPlans[pairVm] = plan;
 
                 foreach (var action in plan)
@@ -173,6 +210,15 @@ public sealed class MainViewModel : ObservableObject
 
                 totalActions += plan.Count;
                 totalConflicts += conflictCount;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // A partial preview would make Run act on only some of the checked pairs.
+                Plan.Clear();
+                _lastPlans.Clear();
+                StatusText = "Preview cancelled.";
+                RaiseCanExecuteChanged();
+                return;
             }
             catch (Exception ex)
             {
@@ -201,7 +247,7 @@ public sealed class MainViewModel : ObservableObject
         return summary;
     }
 
-    private async Task RunAsync()
+    private async Task RunAsync(CancellationToken cancellationToken)
     {
         var runnablePairs = Pairs.Where(p => p.IsSelected && _lastPlans.GetValueOrDefault(p)?.Count > 0).ToList();
         if (runnablePairs.Count == 0)
@@ -212,10 +258,18 @@ public sealed class MainViewModel : ObservableObject
         var totalApplied = 0;
         var totalSkipped = 0;
         var totalConflicts = 0;
+        var totalPlanned = runnablePairs.Sum(p => _lastPlans[p].Count);
+        var cancelled = false;
         var failures = new List<string>();
 
         foreach (var pairVm in runnablePairs)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                cancelled = true;
+                break;
+            }
+
             var pair = pairVm.ToFolderPair();
             var plan = _lastPlans[pairVm];
             var stateKey = pairVm.SavedName;
@@ -237,7 +291,13 @@ public sealed class MainViewModel : ObservableObject
                         ReportStatus($"{verb} '{action.RelativePath}' ({appliedSoFar:N0}/{plan.Count:N0}) — '{pair.Name}'");
                     }
 
-                    var applyResult = ActionExecutor.Apply(pair, plan, OnBeforeApply);
+                    var applyResult = ActionExecutor.Apply(pair, plan, OnBeforeApply, cancellationToken);
+
+                    // Skip the snapshot on cancel: the old one plus the actions that did
+                    // finish still diffs correctly (each finished action left both sides
+                    // agreeing), whereas a fresh snapshot would bake in the unfinished ones.
+                    if (applyResult.Cancelled)
+                        return applyResult;
 
                     var scanned = 0;
                     void OnFileScanned()
@@ -247,13 +307,20 @@ public sealed class MainViewModel : ObservableObject
                             ReportStatus($"Applying changes to '{pair.Name}'… rescanning ({scanned:N0} file(s) so far)");
                     }
 
-                    var newSnapshot = new PairSnapshot
+                    try
                     {
-                        Left = Scanner.Scan(pair.LeftPath, pair, OnFileScanned),
-                        Right = Scanner.Scan(pair.RightPath, pair, OnFileScanned),
-                        LastRunUtc = DateTime.UtcNow
-                    };
-                    _stateStore.Save(stateKey, newSnapshot);
+                        var newSnapshot = new PairSnapshot
+                        {
+                            Left = Scanner.Scan(pair.LeftPath, pair, OnFileScanned, cancellationToken),
+                            Right = Scanner.Scan(pair.RightPath, pair, OnFileScanned, cancellationToken),
+                            LastRunUtc = DateTime.UtcNow
+                        };
+                        _stateStore.Save(stateKey, newSnapshot);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        applyResult.Cancelled = true;
+                    }
 
                     return applyResult;
                 });
@@ -264,6 +331,12 @@ public sealed class MainViewModel : ObservableObject
                 totalConflicts += result.Conflicts;
                 if (result.Errors.Count > 0)
                     failures.Add($"'{pair.Name}': {result.Errors.Count} error(s)");
+
+                if (result.Cancelled)
+                {
+                    cancelled = true;
+                    break;
+                }
             }
             catch (Exception ex)
             {
@@ -271,14 +344,25 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
-        StatusText = $"Done. Applied {totalApplied}, skipped {totalSkipped}, conflicts {totalConflicts}."
-            + (failures.Count > 0 ? $" Errors — {string.Join("; ", failures)}" : "");
+        var errorSuffix = failures.Count > 0 ? $" Errors — {string.Join("; ", failures)}" : "";
+
+        if (cancelled)
+        {
+            // The plan no longer matches what's on disk; don't let Run replay it.
+            Plan.Clear();
+            _lastPlans.Clear();
+            StatusText = $"Cancelled. Applied {totalApplied:N0} of {totalPlanned:N0} change(s) before stopping"
+                + " — click Preview to see what's left." + errorSuffix;
+            return;
+        }
+
+        StatusText = $"Done. Applied {totalApplied}, skipped {totalSkipped}, conflicts {totalConflicts}." + errorSuffix;
 
         // Re-preview so the list reflects the post-run state.
-        await PreviewAsync();
+        await PreviewAsync(cancellationToken);
     }
 
-    private (List<SyncAction> plan, int conflictCount) BuildPlan(FolderPair pair, string stateKey)
+    private (List<SyncAction> plan, int conflictCount) BuildPlan(FolderPair pair, string stateKey, CancellationToken cancellationToken)
     {
         var scanned = 0;
         void OnFileScanned()
@@ -288,12 +372,16 @@ public sealed class MainViewModel : ObservableObject
                 ReportStatus($"Scanning… {scanned:N0} file(s) found so far");
         }
 
-        var currentLeft = Scanner.Scan(pair.LeftPath, pair, OnFileScanned);
-        var currentRight = Scanner.Scan(pair.RightPath, pair, OnFileScanned);
+        var currentLeft = Scanner.Scan(pair.LeftPath, pair, OnFileScanned, cancellationToken);
+        var currentRight = Scanner.Scan(pair.RightPath, pair, OnFileScanned, cancellationToken);
         var snapshot = _stateStore.Load(stateKey);
 
-        var plan = DiffEngine.BuildPlan(pair, currentLeft, currentRight, snapshot,
-            relPath => ContentsDiffer(pair, relPath));
+        var plan = DiffEngine.BuildPlan(pair, currentLeft, currentRight, snapshot, relPath =>
+        {
+            // Hashing can be slow on big files — check between each one.
+            cancellationToken.ThrowIfCancellationRequested();
+            return ContentsDiffer(pair, relPath);
+        });
 
         var conflictCount = plan.Count(a => a.Type == ActionType.Conflict);
         return (plan, conflictCount);
@@ -344,16 +432,25 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Sets StatusText safely whether called from the UI thread or a background scan.</summary>
     private void ReportStatus(string text)
     {
+        // Once Cancel is clicked, keep its "Cancelling…" message up rather than letting
+        // in-flight progress updates overwrite it.
+        void Apply()
+        {
+            if (_operationCts?.IsCancellationRequested != true)
+                StatusText = text;
+        }
+
         if (_dispatcherQueue.HasThreadAccess)
-            StatusText = text;
+            Apply();
         else
-            _dispatcherQueue.TryEnqueue(() => StatusText = text);
+            _dispatcherQueue.TryEnqueue(Apply);
     }
 
     private void RaiseCanExecuteChanged()
     {
         PreviewCommand.RaiseCanExecuteChanged();
         RunCommand.RaiseCanExecuteChanged();
+        CancelCommand.RaiseCanExecuteChanged();
         RemovePairCommand.RaiseCanExecuteChanged();
         SaveEditsCommand.RaiseCanExecuteChanged();
     }
