@@ -39,6 +39,28 @@ public sealed class StateStore
     }
 
     /// <summary>
+    /// Carries a pair's state over to its new name, so renaming a pair doesn't make the
+    /// next run look like a first run (which can't detect deletions). Returns false — and
+    /// moves nothing — if some other pair already has state under the new name.
+    /// </summary>
+    public bool Rename(string oldName, string newName)
+    {
+        var oldPath = SnapshotPath(oldName);
+        var newPath = SnapshotPath(newName);
+
+        if (oldPath == newPath || !File.Exists(oldPath))
+            return true;
+
+        // A case-only rename is the same file on Windows, so "exists" doesn't mean a clash.
+        var caseOnly = string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase);
+        if (!caseOnly && File.Exists(newPath))
+            return false;
+
+        File.Move(oldPath, newPath);
+        return true;
+    }
+
+    /// <summary>
     /// When the pair was last run, or null if it never has been. Uses the snapshot file's
     /// write time (it's only written at the end of a run) so we don't have to deserialize
     /// what can be a multi-megabyte file just to read one timestamp.

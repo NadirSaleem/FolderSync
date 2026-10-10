@@ -89,7 +89,7 @@ public sealed class MainViewModel : ObservableObject
 
             // Re-read on every click so runs done from the CLI since startup show up too.
             if (value is not null)
-                value.LastRunUtc = _stateStore.GetLastRunUtc(value.Name);
+                value.LastRunUtc = _stateStore.GetLastRunUtc(value.SavedName);
 
             RaiseCanExecuteChanged();
         }
@@ -136,8 +136,11 @@ public sealed class MainViewModel : ObservableObject
     private async Task SaveEditsAsync()
     {
         // Names/paths/mode are edited in place on the view model; just persist.
-        SavePairs();
-        StatusText = "Saved.";
+        var stranded = SavePairs();
+        StatusText = stranded.Count == 0
+            ? "Saved."
+            : $"Saved, but couldn't carry over sync history for {string.Join(", ", stranded)} — "
+              + "another pair already has history under that name.";
         await Task.CompletedTask;
     }
 
@@ -162,7 +165,7 @@ public sealed class MainViewModel : ObservableObject
 
             try
             {
-                var (plan, conflictCount) = await Task.Run(() => BuildPlan(pair));
+                var (plan, conflictCount) = await Task.Run(() => BuildPlan(pair, pairVm.SavedName));
                 _lastPlans[pairVm] = plan;
 
                 foreach (var action in plan)
@@ -215,6 +218,7 @@ public sealed class MainViewModel : ObservableObject
         {
             var pair = pairVm.ToFolderPair();
             var plan = _lastPlans[pairVm];
+            var stateKey = pairVm.SavedName;
 
             try
             {
@@ -249,12 +253,12 @@ public sealed class MainViewModel : ObservableObject
                         Right = Scanner.Scan(pair.RightPath, pair, OnFileScanned),
                         LastRunUtc = DateTime.UtcNow
                     };
-                    _stateStore.Save(pair.Name, newSnapshot);
+                    _stateStore.Save(stateKey, newSnapshot);
 
                     return applyResult;
                 });
 
-                pairVm.LastRunUtc = _stateStore.GetLastRunUtc(pair.Name);
+                pairVm.LastRunUtc = _stateStore.GetLastRunUtc(stateKey);
                 totalApplied += result.Applied;
                 totalSkipped += result.Skipped;
                 totalConflicts += result.Conflicts;
@@ -274,7 +278,7 @@ public sealed class MainViewModel : ObservableObject
         await PreviewAsync();
     }
 
-    private (List<SyncAction> plan, int conflictCount) BuildPlan(FolderPair pair)
+    private (List<SyncAction> plan, int conflictCount) BuildPlan(FolderPair pair, string stateKey)
     {
         var scanned = 0;
         void OnFileScanned()
@@ -286,7 +290,7 @@ public sealed class MainViewModel : ObservableObject
 
         var currentLeft = Scanner.Scan(pair.LeftPath, pair, OnFileScanned);
         var currentRight = Scanner.Scan(pair.RightPath, pair, OnFileScanned);
-        var snapshot = _stateStore.Load(pair.Name);
+        var snapshot = _stateStore.Load(stateKey);
 
         var plan = DiffEngine.BuildPlan(pair, currentLeft, currentRight, snapshot,
             relPath => ContentsDiffer(pair, relPath));
@@ -317,11 +321,24 @@ public sealed class MainViewModel : ObservableObject
         return JsonSerializer.Deserialize<List<FolderPair>>(json) ?? new List<FolderPair>();
     }
 
-    private void SavePairs()
+    /// <summary>Writes pairs.json and moves sync state along with any renamed pairs.
+    /// Returns the names of renamed pairs whose state couldn't be moved.</summary>
+    private List<string> SavePairs()
     {
         var pairs = Pairs.Select(vm => vm.ToFolderPair()).ToList();
         var json = JsonSerializer.Serialize(pairs, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_pairsFilePath, json);
+
+        var stranded = new List<string>();
+        foreach (var vm in Pairs.Where(vm => vm.Name != vm.SavedName))
+        {
+            // On a clash, leave SavedName alone so the pair keeps using its existing history.
+            if (_stateStore.Rename(vm.SavedName, vm.Name))
+                vm.SavedName = vm.Name;
+            else
+                stranded.Add($"'{vm.Name}'");
+        }
+        return stranded;
     }
 
     /// <summary>Sets StatusText safely whether called from the UI thread or a background scan.</summary>

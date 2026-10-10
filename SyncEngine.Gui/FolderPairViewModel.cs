@@ -18,6 +18,7 @@ public sealed class FolderPairViewModel : ObservableObject
     public FolderPairViewModel(FolderPair pair)
     {
         _name = pair.Name;
+        SavedName = pair.Name;
         _leftPath = pair.LeftPath;
         _rightPath = pair.RightPath;
         _mode = pair.Mode;
@@ -35,6 +36,13 @@ public sealed class FolderPairViewModel : ObservableObject
         get => _name;
         set => SetField(ref _name, value);
     }
+
+    /// <summary>
+    /// The name as last written to pairs.json. Sync state is keyed by this, not Name, so
+    /// an unsaved rename in the edit box doesn't split the pair's history across two
+    /// state files; SavePairs moves the state over when the rename is saved.
+    /// </summary>
+    public string SavedName { get; set; }
 
     public string LeftPath
     {
