@@ -84,8 +84,14 @@ public sealed class MainViewModel : ObservableObject
         get => _selectedPair;
         set
         {
-            if (SetField(ref _selectedPair, value))
-                RaiseCanExecuteChanged();
+            if (!SetField(ref _selectedPair, value))
+                return;
+
+            // Re-read on every click so runs done from the CLI since startup show up too.
+            if (value is not null)
+                value.LastRunUtc = _stateStore.GetLastRunUtc(value.Name);
+
+            RaiseCanExecuteChanged();
         }
     }
 
@@ -248,6 +254,7 @@ public sealed class MainViewModel : ObservableObject
                     return applyResult;
                 });
 
+                pairVm.LastRunUtc = _stateStore.GetLastRunUtc(pair.Name);
                 totalApplied += result.Applied;
                 totalSkipped += result.Skipped;
                 totalConflicts += result.Conflicts;

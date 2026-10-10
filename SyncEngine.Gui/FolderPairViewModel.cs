@@ -13,6 +13,7 @@ public sealed class FolderPairViewModel : ObservableObject
     private string _rightPath;
     private SyncMode _mode;
     private bool _isSelected;
+    private DateTime? _lastRunUtc;
 
     public FolderPairViewModel(FolderPair pair)
     {
@@ -52,6 +53,30 @@ public sealed class FolderPairViewModel : ObservableObject
         get => _mode;
         set => SetField(ref _mode, value);
     }
+
+    /// <summary>When this pair was last run (GUI or CLI); null if never.</summary>
+    public DateTime? LastRunUtc
+    {
+        get => _lastRunUtc;
+        set
+        {
+            if (SetField(ref _lastRunUtc, value))
+                OnPropertyChanged(nameof(LastRunText));
+        }
+    }
+
+    public string LastRunText => _lastRunUtc is { } utc
+        ? $"Last run: {utc.ToLocalTime():ddd d MMM yyyy, HH:mm} ({FormatAgo(DateTime.UtcNow - utc)})"
+        : "Last run: never";
+
+    private static string FormatAgo(TimeSpan span) => span switch
+    {
+        { TotalMinutes: < 1 } => "just now",
+        { TotalHours: < 1 } => $"{(int)span.TotalMinutes} min ago",
+        { TotalDays: < 1 } => $"{(int)span.TotalHours} hr ago",
+        { TotalDays: < 2 } => "yesterday",
+        _ => $"{(int)span.TotalDays} days ago"
+    };
 
     /// <summary>Short one-line summary shown in the pairs list.</summary>
     public string Summary => $"{LeftPath}  →  {RightPath}";

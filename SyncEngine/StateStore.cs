@@ -38,6 +38,17 @@ public sealed class StateStore
         File.WriteAllText(path, json);
     }
 
+    /// <summary>
+    /// When the pair was last run, or null if it never has been. Uses the snapshot file's
+    /// write time (it's only written at the end of a run) so we don't have to deserialize
+    /// what can be a multi-megabyte file just to read one timestamp.
+    /// </summary>
+    public DateTime? GetLastRunUtc(string pairName)
+    {
+        var path = SnapshotPath(pairName);
+        return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : null;
+    }
+
     private string SnapshotPath(string pairName) =>
         Path.Combine(_stateDirectory, $"{SanitizeFileName(pairName)}.json");
 
