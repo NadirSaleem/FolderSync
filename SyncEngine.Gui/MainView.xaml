@@ -10,9 +10,14 @@
     <UserControl.Resources>
         <local:NullToCollapsedConverter x:Key="NullToCollapsedConverter" />
         <local:SyncModeDescriptionConverter x:Key="SyncModeDescriptionConverter" />
+
+        <!-- The detail pane's blue. The selected pair in the list on the left uses the
+             same colour, so a selected pair reads as the same surface as the pane it opens. -->
+        <Color x:Key="DetailPaneColor">#FF14284C</Color>
+        <SolidColorBrush x:Key="DetailPaneBrush" Color="{StaticResource DetailPaneColor}" />
     </UserControl.Resources>
 
-    <Grid Padding="0" ColumnSpacing="16" Background="#14284C">
+    <Grid Padding="0" ColumnSpacing="16" Background="{StaticResource DetailPaneBrush}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="280" />
             <ColumnDefinition Width="*" />
@@ -34,6 +39,13 @@
                 ItemsSource="{x:Bind ViewModel.Pairs}"
                 SelectedItem="{x:Bind ViewModel.SelectedPair, Mode=TwoWay}"
                 SelectionMode="Single">
+                <ListView.Resources>
+                    <!-- Override the default (lighter, grey-blue) selection fill -->
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="{StaticResource DetailPaneColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="{StaticResource DetailPaneColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="{StaticResource DetailPaneColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedDisabled" Color="{StaticResource DetailPaneColor}" />
+                </ListView.Resources>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:FolderPairViewModel">
                         <Grid ColumnSpacing="8" Margin="0,4">
