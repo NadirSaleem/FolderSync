@@ -1,15 +1,21 @@
 # Generates AppIcon.ico. The icon is drawn as vector shapes and rendered at each size,
 # so it is regenerated from here rather than edited as a bitmap.
 #
-# The installed icon (v1.0.3.2) was produced with:
+# The installed icon (v1.0.3.3) was produced with:
 #
 #   .\AppIcon.gen.ps1 -OutDir out `
 #       -Fold 175 -ArrowCy 555 -ArrowTail 282 -ArrowTip 817 -HeadHalf 160 -ShaftHalf 79 -HeadLen 244 `
 #       -CornerRadius 70 -ArrowRadius 28 -Stroke 42 -OutlineHex '#1E2A3A' -GlobalScale 1.0551 `
-#       -RightBand -BandWidth 78 -FrontFoldHex '#C8E1FE' -BackFoldHex '#4BA4FC' `
-#       -FrontRect 70,127,707,954 -BackRect 317,68,954,895
+#       -RightBand -BandWidth 78 `
+#       -FrontRect 70,127,707,954 -BackRect 317,68,954,895 `
+#       -Gradient -FrontFrom '#EDF6FF' -FrontTo '#BFD9F6' -BackFrom '#A8D6FF' -BackTo '#3579D6' `
+#       -ArrowFrom '#9BF09D' -ArrowTo '#239140' `
+#       -Shadow -ShadowDx 22 -ShadowDy 26 -ShadowSpread 68 -ShadowAlpha 58
 #
 # Sheet rectangles and the band width match the proportions of the icon that preceded it.
+# Each sheet and the arrow are lit from the top left and cast a shadow on what is behind
+# them, which is what gives the stack its depth; the arrow's shadow is 60% of the sheets',
+# since it sits closer to the front sheet than the sheets sit to each other.
 param(
     [string]$OutDir,
     [int[]]$Sizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256),
@@ -36,6 +42,8 @@ param(
     [switch]$Gradient,
     [string]$FrontFrom = '#FFFFFF', [string]$FrontTo = '#E4E4E8',
     [string]$BackFrom = '#71B5FD', [string]$BackTo = '#BFA6F0',
+    # the arrow's own shading, used with -Gradient; lit from the same corner as the sheets
+    [string]$ArrowFrom = '', [string]$ArrowTo = '',
     # flat fills, and the darker shade used for the folded flap
     [string]$FrontFillHex = '#DBECFE', [string]$FrontFoldHex = '#FFFFFF',
     [string]$BackFillHex = '#71B5FD', [string]$BackFoldHex = '#4BA4FC',
@@ -44,7 +52,11 @@ param(
     [double]$BandWidth = 48,
     # each sheet's path rectangle, x0,y0,x1,y1 (the stroke straddles these edges)
     [double[]]$FrontRect = @(60, 230, 640, 960),
-    [double[]]$BackRect = @(380, 60, 960, 790)
+    [double[]]$BackRect = @(380, 60, 960, 790),
+    # soft shadow cast by each sheet, which is what lifts the front one off the back one
+    [switch]$Shadow,
+    [double]$ShadowDx = 12, [double]$ShadowDy = 16,
+    [double]$ShadowSpread = 40, [int]$ShadowAlpha = 30
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -171,6 +183,31 @@ function Render([int]$size) {
         $frontFold = HexBrush $FrontFoldHex
     }
 
+    # A soft shadow without a blur: the offset shape is stroked repeatedly with translucent
+    # pens of shrinking width, so the alpha builds up towards the shape and falls away from it.
+    function CastShadow($path, [double]$scale = 1.0) {
+        if (-not $Shadow) { return }
+        $sp = $path.Clone()
+        $m = New-Object System.Drawing.Drawing2D.Matrix
+        $m.Translate([float]($ShadowDx * $scale), [float]($ShadowDy * $scale))
+        $sp.Transform($m)
+
+        $steps = 6
+        for ($i = $steps; $i -ge 1; $i--) {
+            $w = $ShadowSpread * $scale * $i / $steps
+            $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb($ShadowAlpha, 10, 20, 35)), $w
+            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+            $g.DrawPath($pen, $sp)
+            $pen.Dispose()
+        }
+        # the core, at exactly the alpha the stacked strokes build up to, so there is no step at the edge
+        $core = [int](255 * (1 - [Math]::Pow(1 - $ShadowAlpha / 255.0, $steps)))
+        if ($core -gt 255) { $core = 255 }
+        $br = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($core, 10, 20, 35))
+        $g.FillPath($br, $sp)
+        $br.Dispose(); $sp.Dispose(); $m.Dispose()
+    }
+
     # the band sits inside the sheet, so it is clipped to the sheet's own outline; the
     # outline is stroked afterwards and hides the clipped edge
     function Band($path, $brush, [double]$x1, [double]$y0, [double]$y1) {
@@ -186,6 +223,7 @@ function Render([int]$size) {
     if (-not $ArrowOnly) {
     # back sheet
     $back = New-DocPath $BackRect[0] $BackRect[1] $BackRect[2] $BackRect[3] $fold $CornerRadius
+    CastShadow $back
     $g.FillPath($backFill, $back)
     Band $back $backFold $BackRect[2] $BackRect[1] $BackRect[3]
     $g.DrawPath($pen, $back)
@@ -194,6 +232,7 @@ function Render([int]$size) {
 
     # front sheet
     $front = New-DocPath $FrontRect[0] $FrontRect[1] $FrontRect[2] $FrontRect[3] $fold $CornerRadius
+    CastShadow $front
     $g.FillPath($frontFill, $front)
     Band $front $frontFold $FrontRect[2] $FrontRect[1] $FrontRect[3]
     $g.DrawPath($pen, $front)
@@ -213,6 +252,11 @@ function Render([int]$size) {
         @($hx, ($cy + $ShaftHalf)),
         @($ArrowTail, ($cy + $ShaftHalf))
     ) $ArrowRadius
+    if ($ArrowFrom -and $ArrowTo) {
+        $arrowFill = DiagBrush $ArrowTail ($cy - $HeadHalf) $ArrowTip ($cy + $HeadHalf) $ArrowFrom $ArrowTo
+    }
+    # the arrow sits just above the front sheet, so its shadow is shorter than the sheets' own
+    CastShadow $arrow 0.6
     $g.FillPath($arrowFill, $arrow); $g.DrawPath($pen, $arrow)
 
     $g.Dispose()
