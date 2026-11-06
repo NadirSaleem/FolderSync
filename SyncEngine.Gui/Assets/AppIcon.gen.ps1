@@ -1,16 +1,20 @@
 # Generates AppIcon.ico. The icon is drawn as vector shapes and rendered at each size,
 # so it is regenerated from here rather than edited as a bitmap.
 #
-# The installed icon (v1.0.3.3) was produced with:
+# The installed icon (v1.0.3.4) was produced with:
 #
 #   .\AppIcon.gen.ps1 -OutDir out `
 #       -Fold 175 -ArrowCy 555 -ArrowTail 282 -ArrowTip 817 -HeadHalf 160 -ShaftHalf 79 -HeadLen 244 `
 #       -CornerRadius 70 -ArrowRadius 28 -Stroke 42 -OutlineHex '#1E2A3A' -GlobalScale 1.0551 `
 #       -RightBand -BandWidth 78 `
 #       -FrontRect 70,127,707,954 -BackRect 317,68,954,895 `
-#       -Gradient -FrontFrom '#EDF6FF' -FrontTo '#BFD9F6' -BackFrom '#A8D6FF' -BackTo '#3579D6' `
-#       -ArrowFrom '#9BF09D' -ArrowTo '#239140' `
+#       -Gradient -FrontFrom '#FFE8A6' -FrontTo '#FFC933' -BackFrom '#A8D6FF' -BackTo '#3579D6' `
+#       -ArrowFrom '#6FD977' -ArrowTo '#16702F' `
 #       -Shadow -ShadowDx 22 -ShadowDy 26 -ShadowSpread 68 -ShadowAlpha 58
+#
+# The front sheet's two yellows are sampled from the Windows folder icon itself
+# (imageres.dll, icon index 3, at 256px): its face runs #FFE8A6 at the top left to
+# #FFC933 at the bottom right, the same direction as the shading here.
 #
 # Sheet rectangles and the band width match the proportions of the icon that preceded it.
 # Each sheet and the arrow are lit from the top left and cast a shadow on what is behind
